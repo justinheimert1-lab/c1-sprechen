@@ -1,0 +1,9 @@
+{
+  "name": "C1 Sprechen",
+  "short_name": "C1 Sprechen",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#00BDB6",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
