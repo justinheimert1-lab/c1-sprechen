@@ -293,7 +293,8 @@ code { background: var(--panel); padding: 1px 5px; }
   <label class="field">Sprechtempo: <span id="s-rate-val">1,0×</span>
     <input type="range" id="s-rate" min="0.7" max="1.2" step="0.05">
   </label>
-  <div class="row"><button class="btn" id="s-test">Stimme testen</button></div>
+  <div class="row"><button class="btn" id="s-test">Stimme testen</button><button class="btn" id="s-reload">Stimmen neu laden</button></div>
+  <details id="s-diag"><summary class="small"><b id="s-diag-sum">Gefundene Stimmen</b></summary><p class="small muted" id="s-diag-list" style="margin-top:6px"></p></details>
   <label class="row small"><input type="checkbox" id="s-autolisten"> Nach Claudes Antwort automatisch zuhören</label>
   <label class="row small"><input type="checkbox" id="s-autosend"> Automatisch senden nach 2,5 s Pause <span class="muted">(sonst Mikrofon antippen)</span></label>
   <label class="row small"><input type="checkbox" id="s-saycorr"> Korrekturen mit vorlesen</label>
@@ -329,7 +330,15 @@ $("#no-sr").hidden = !!SR;
 /* ---------- voices (best natural voice first) ---------- */
 const canSpeak = "speechSynthesis" in window;
 let voices = [];
-function loadVoices() { if (!canSpeak) return; try { voices = speechSynthesis.getVoices().filter(v => /^en([-_]|$)/i.test(v.lang)); } catch (e) { voices = []; } renderVoiceSelect(); }
+let allVoices = [];
+function loadVoices() {
+  if (!canSpeak) return;
+  try { allVoices = speechSynthesis.getVoices() || []; } catch (e) { allVoices = []; }
+  voices = allVoices.filter(v => /^en([-_]|$)/i.test(v.lang));
+  renderVoiceSelect();
+}
+/* some browsers (Edge especially) deliver the online voices late: keep asking for a few seconds */
+function pollVoices() { let n = 0; const iv = setInterval(() => { const before = voices.length; loadVoices(); if (++n > 24 || (voices.length && voices.length === before && n > 6)) clearInterval(iv); }, 500); }
 function voiceScore(v) {
   const n = v.name || "", acc = S.accent.toLowerCase(); let s = 0;
   if (v.lang.replace("_", "-").toLowerCase() === acc) s += 20; else if (acc === "en-gb" && /en[-_](ie|au)/i.test(v.lang)) s += 6;
@@ -350,12 +359,14 @@ function renderVoiceSelect() {
   sel.innerHTML = '<option value="">Automatisch' + (best && !S.voice ? ": " + esc(best.name) : "") + "</option>" +
     voices.slice().sort((a, b) => voiceScore(b) - voiceScore(a)).map(v => '<option value="' + esc(v.voiceURI) + '"' + (v.voiceURI === S.voice ? " selected" : "") + ">" + esc(v.name) + " (" + esc(v.lang) + ")</option>").join("");
   const natural = voices.some(v => voiceScore(v) >= 30);
+  $("#s-diag-sum").textContent = "Gefundene Stimmen: " + allVoices.length + " insgesamt, " + voices.length + " englisch" + (natural ? ", davon natürliche ✓" : ", keine natürliche");
+  $("#s-diag-list").textContent = voices.length ? voices.map(v => v.name + " (" + v.lang + (v.localService === false ? ", online" : "") + ")").join(" · ") : "Keine englischen Stimmen.";
   const hint = $("#s-voice-hint");
   hint.hidden = natural;
   hint.textContent = !voices.length ? "Keine englische Stimme gefunden. Am PC Microsoft Edge nutzen, am iPhone unter Einstellungen › Bedienungshilfen › Gesprochene Inhalte › Stimmen eine englische Stimme laden."
     : "Für eine natürliche Stimme: am PC Microsoft Edge nutzen (Stimmen wie „Sonia Online (Natural)“), am iPhone eine „Erweitert“- oder „Premium“-Stimme laden, am Android-Handy Chrome mit Google-Stimmen.";
 }
-if (canSpeak) { loadVoices(); speechSynthesis.addEventListener ? speechSynthesis.addEventListener("voiceschanged", loadVoices) : (speechSynthesis.onvoiceschanged = loadVoices); }
+if (canSpeak) { loadVoices(); pollVoices(); speechSynthesis.addEventListener ? speechSynthesis.addEventListener("voiceschanged", loadVoices) : (speechSynthesis.onvoiceschanged = loadVoices); }
 
 /* sentence queue so Claude starts talking while it is still writing */
 const ttsQueue = []; let ttsBusy = false; let ttsDoneCb = null;
@@ -687,6 +698,8 @@ function readSettings() {
 ["#s-theme", "#s-model", "#s-accent", "#s-voice", "#s-autolisten", "#s-autosend", "#s-saycorr", "#s-rate"].forEach(id => $(id).addEventListener("change", readSettings));
 $("#s-expiry").addEventListener("change", () => { S.keyExpiry = $("#s-expiry").value || ""; saveS(); renderHome(); });
 $("#s-rate").addEventListener("input", () => { $("#s-rate-val").textContent = $("#s-rate").value.replace(".", ",") + "×"; });
+$("#s-reload").addEventListener("click", () => { loadVoices(); pollVoices(); });
+$("#s-voice").addEventListener("change", () => { stopSpeaking(); sayChunk("Hi Justin! This is how I sound."); });
 $("#s-test").addEventListener("click", () => { stopSpeaking(); sayChunk("Hi Justin! Nice to meet you. Shall we have a chat about robots today?"); });
 $("#s-key-save").addEventListener("click", () => { const k = $("#s-key").value.trim(); if (!k) return; apiKey = k; try { localStorage.setItem("c1talk.key", k); } catch (e) {} $("#s-key").value = ""; $("#s-key-msg").textContent = "Gespeichert."; renderHome(); });
 $("#s-key-del").addEventListener("click", () => { apiKey = ""; try { localStorage.removeItem("c1talk.key"); } catch (e) {} $("#s-key-msg").textContent = "Gelöscht."; renderHome(); });
